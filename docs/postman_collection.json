@@ -1,0 +1,140 @@
+{
+  "info": {
+    "name": "Fleet Owner API",
+    "description": "Lorry/container owner trip-accounting API. Set {{base_url}} (default http://localhost:8000). Run 'Request OTP' then 'Verify OTP' — the access token is captured automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "identifier", "value": "9000000001" },
+    { "key": "otp_code", "value": "123456" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "vehicle_id", "value": "" },
+    { "key": "load_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Request OTP",
+          "event": [
+            { "listen": "test", "script": { "exec": [
+              "const j = pm.response.json();",
+              "if (j.dev_code) { pm.collectionVariables.set('otp_code', j.dev_code); }",
+              "pm.test('channel returned', () => pm.expect(j.channel).to.be.oneOf(['sms','email']));"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/api/v1/auth/request-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"{{identifier}}\",\n  \"name\": \"Demo Owner\"\n}" }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "event": [
+            { "listen": "test", "script": { "exec": [
+              "const j = pm.response.json();",
+              "pm.collectionVariables.set('access_token', j.access_token);",
+              "pm.collectionVariables.set('refresh_token', j.refresh_token);",
+              "pm.test('got tokens', () => pm.expect(j.access_token).to.be.a('string'));"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/api/v1/auth/verify-otp",
+            "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"{{identifier}}\",\n  \"code\": \"{{otp_code}}\",\n  \"name\": \"Demo Owner\",\n  \"email\": \"owner@demo.fleet\"\n}" }
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": "{{base_url}}/api/v1/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vehicles",
+      "item": [
+        {
+          "name": "Create Vehicle",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "const j = pm.response.json();",
+            "pm.collectionVariables.set('vehicle_id', j.id);"
+          ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/vehicles",
+            "body": { "mode": "raw", "raw": "{\n  \"registration_number\": \"TN28AB1234\",\n  \"axle_type\": \"multi\",\n  \"length_feet\": 32,\n  \"body_type\": \"container\",\n  \"age_years\": 3,\n  \"chassis_number\": \"MAT4827\",\n  \"make\": \"Tata\", \"model\": \"LPT 3118\",\n  \"documents\": {\n    \"rc\": { \"number\": \"RC-1234\", \"expiry_date\": \"2028-01-01\" },\n    \"insurance\": { \"expiry_date\": \"2026-06-29\" }\n  }\n}" }
+          }
+        },
+        {
+          "name": "List Vehicles",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/api/v1/vehicles" }
+        },
+        {
+          "name": "Set Status",
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" } ],
+            "url": "{{base_url}}/api/v1/vehicles/{{vehicle_id}}/status",
+            "body": { "mode": "raw", "raw": "{ \"status\": \"on_the_way\" }" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Loads",
+      "item": [
+        {
+          "name": "Create Load",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "const j = pm.response.json();",
+            "pm.collectionVariables.set('load_id', j.id);"
+          ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" } ],
+            "url": "{{base_url}}/api/v1/loads",
+            "body": { "mode": "raw", "raw": "{\n  \"vehicle_id\": \"{{vehicle_id}}\",\n  \"start_date\": \"2026-06-01\",\n  \"legs\": [\n    {\n      \"loading_point\": \"Namakkal\", \"unloading_point\": \"Mumbai\",\n      \"total_rent\": 95000, \"commission\": 4000, \"driver_salary\": 8000, \"fastag\": 2200,\n      \"diesel\": [ { \"amount\": 18000 }, { \"amount\": 16000 } ],\n      \"advance\": [ { \"amount\": 40000 } ]\n    },\n    {\n      \"loading_point\": \"Mumbai\", \"unloading_point\": \"Madurai\",\n      \"total_rent\": 88000, \"commission\": 3500, \"driver_salary\": 7500, \"fastag\": 1900,\n      \"diesel\": [ { \"amount\": 32000 } ], \"advance\": [ { \"amount\": 35000 } ]\n    }\n  ]\n}" }
+          }
+        },
+        {
+          "name": "Close Load",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" } ],
+            "url": "{{base_url}}/api/v1/loads/{{load_id}}/close",
+            "body": { "mode": "raw", "raw": "{ \"driver_balance\": 5000, \"end_date\": \"2026-06-08\" }" }
+          }
+        },
+        {
+          "name": "List Loads (vehicle)",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/api/v1/loads?vehicle_id={{vehicle_id}}" }
+        }
+      ]
+    },
+    {
+      "name": "Analytics & Reports",
+      "item": [
+        { "name": "Dashboard", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/api/v1/analytics/dashboard?months=6" } },
+        { "name": "Profit by Vehicle", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/api/v1/analytics/profit" } },
+        { "name": "Trips for Vehicle", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/api/v1/analytics/profit/{{vehicle_id}}" } },
+        { "name": "Notifications", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/api/v1/notifications" } },
+        { "name": "Profit PDF", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/api/v1/reports/fleet.pdf" } }
+      ]
+    },
+    { "name": "Health", "request": { "method": "GET", "url": "{{base_url}}/health" } }
+  ]
+}

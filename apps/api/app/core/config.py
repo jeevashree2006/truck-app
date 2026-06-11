@@ -1,0 +1,94 @@
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment / .env file."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # App
+    app_name: str = "Fleet Owner API"
+    env: str = "development"
+    cors_origins: str = "http://localhost:3000,http://localhost:8081,http://localhost:19006"
+
+    # Mongo
+    mongodb_uri: str = "mongodb://localhost:27017"
+    mongodb_db: str = "fleet"
+
+    # JWT
+    jwt_secret: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 30
+
+    # OTP
+    otp_length: int = 6
+    otp_expire_minutes: int = 10
+    otp_max_attempts: int = 5
+
+    # Documents
+    doc_expiring_soon_days: int = 30
+
+    # Email. Two free ways to send real emails:
+    #  1) SMTP (Gmail etc.) via Python's stdlib smtplib — set SMTP_USER + SMTP_PASSWORD.
+    #  2) SendGrid API — set SENDGRID_API_KEY.
+    email_from: str = "no-reply@fleetowner.app"
+    email_from_name: str = "Fleet Owner"
+    # SMTP (e.g. Gmail: host=smtp.gmail.com, port=587, user=you@gmail.com,
+    # password=16-char App Password from https://myaccount.google.com/apppasswords)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    # SendGrid (alternative)
+    sendgrid_api_key: str = ""
+
+    @property
+    def has_email_provider(self) -> bool:
+        return bool((self.smtp_user and self.smtp_password) or self.sendgrid_api_key)
+
+    # SMS. If none configured, OTP SMS is logged to console (dev mode).
+    # Fast2SMS (India; easiest — OTP route needs no DLT template):
+    fast2sms_api_key: str = ""
+    # Twilio (works internationally):
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from: str = ""  # e.g. +1xxxxxxxxxx
+    # MSG91 (India; needs DLT-approved flow/template):
+    msg91_auth_key: str = ""
+    msg91_flow_id: str = ""
+    msg91_sender: str = "FLEET"
+    # Generic fallback provider:
+    sms_api_key: str = ""
+    sms_api_url: str = ""
+    sms_sender: str = "FLEET"
+
+    @property
+    def has_sms_provider(self) -> bool:
+        return bool(
+            self.fast2sms_api_key
+            or (self.twilio_account_sid and self.twilio_auth_token and self.twilio_from)
+            or self.msg91_auth_key
+            or self.sms_api_key
+        )
+
+    # Push (Expo)
+    expo_access_token: str = ""
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def is_dev(self) -> bool:
+        return self.env.lower() in {"dev", "development", "local"}
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

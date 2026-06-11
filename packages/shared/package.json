@@ -1,0 +1,8 @@
+{
+  "name": "@fleet/shared",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared TypeScript domain types for the Fleet Owner web + mobile apps (mirror of the FastAPI schemas).",
+  "types": "types.ts",
+  "main": "types.ts"
+}
