@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep
 from app.core.security import create_token, decode_token
-from app.models.common import oid, serialize_doc
+from app.models.common import serialize_doc
 from app.schemas.auth import (
     OTPRequested,
     RefreshRequest,
@@ -95,7 +95,7 @@ async def verify_otp_endpoint(payload: VerifyOTP, db: DbDep):
         result = await db.users.insert_one(doc)
         user_id = str(result.inserted_id)
     else:
-        user_id = str(user["_id"])
+        user_id = user["id"]
         # Backfill any newly provided profile details.
         backfill = {}
         if payload.name and not user.get("name"):
@@ -105,7 +105,7 @@ async def verify_otp_endpoint(payload: VerifyOTP, db: DbDep):
         if payload.mobile and not user.get("mobile"):
             backfill["mobile"] = normalize_mobile(payload.mobile)
         if backfill:
-            await db.users.update_one({"_id": user["_id"]}, {"$set": backfill})
+            await db.users.update_one({"id": user["id"]}, {"$set": backfill})
 
     return TokenPair(
         access_token=create_token(user_id, "access"),
@@ -125,7 +125,7 @@ async def refresh(payload: RefreshRequest, db: DbDep):
     except (jwt.PyJWTError, KeyError, ValueError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
-    user = await db.users.find_one({"_id": oid(user_id)})
+    user = await db.users.find_one({"id": user_id})
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 

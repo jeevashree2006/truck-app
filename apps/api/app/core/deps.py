@@ -2,11 +2,10 @@ from typing import Annotated
 
 import jwt
 from fastapi import Depends, Header, HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.security import decode_token
-from app.db.mongo import get_db
-from app.models.common import oid, serialize_doc
+from app.db.sql import Database, get_db
+from app.models.common import serialize_doc
 
 _UNAUTHORIZED = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -15,11 +14,7 @@ _UNAUTHORIZED = HTTPException(
 )
 
 
-def get_database() -> AsyncIOMotorDatabase:
-    return get_db()
-
-
-DbDep = Annotated[AsyncIOMotorDatabase, Depends(get_database)]
+DbDep = Annotated[Database, Depends(get_db)]
 
 
 async def get_current_user(
@@ -38,10 +33,7 @@ async def get_current_user(
     except (jwt.PyJWTError, KeyError):
         raise _UNAUTHORIZED
 
-    try:
-        user = await db.users.find_one({"_id": oid(user_id)})
-    except ValueError:
-        raise _UNAUTHORIZED
+    user = await db.users.find_one({"id": user_id})
     if user is None:
         raise _UNAUTHORIZED
     return serialize_doc(user)

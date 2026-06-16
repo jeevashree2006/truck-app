@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.core.deps import CurrentUser, DbDep
-from app.models.common import oid, to_mongo
+from app.models.common import to_mongo
 from app.models.enums import TripStatus, VehicleStatus
 from app.schemas.common import Message
 from app.schemas.load import CloseTrip, LoadCreate, LoadOut, LoadUpdate
@@ -18,10 +18,7 @@ def _now() -> datetime:
 
 
 async def _owned_load(db: DbDep, owner_id: str, load_id: str) -> dict:
-    try:
-        doc = await db.loads.find_one({"_id": oid(load_id), "owner_id": owner_id})
-    except ValueError:
-        doc = None
+    doc = await db.loads.find_one({"id": load_id, "owner_id": owner_id})
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Load not found")
     return doc
@@ -80,11 +77,11 @@ async def create_load(payload: LoadCreate, current: CurrentUser, db: DbDep):
 
     # An active load puts the vehicle "on the way".
     await db.vehicles.update_one(
-        {"_id": oid(payload.vehicle_id)},
+        {"id": payload.vehicle_id},
         {"$set": {"status": VehicleStatus.on_the_way.value, "active_load_id": load_id, "updated_at": _now()}},
     )
 
-    created = await db.loads.find_one({"_id": result.inserted_id})
+    created = await db.loads.find_one({"id": result.inserted_id})
     return _out(created, vehicle.get("registration_number"))
 
 
@@ -107,8 +104,8 @@ async def update_load(load_id: str, payload: LoadUpdate, current: CurrentUser, d
     if "start_date" in data:
         updates["start_date"] = to_mongo(data["start_date"])
     updates["updated_at"] = _now()
-    await db.loads.update_one({"_id": oid(load_id)}, {"$set": updates})
-    fresh = await db.loads.find_one({"_id": oid(load_id)})
+    await db.loads.update_one({"id": load_id}, {"$set": updates})
+    fresh = await db.loads.find_one({"id": load_id})
     reg_map = await vehicle_registration_map(db, current["id"])
     return _out(fresh, reg_map.get(existing.get("vehicle_id")))
 
@@ -125,12 +122,15 @@ async def close_load(load_id: str, payload: CloseTrip, current: CurrentUser, db:
             "status": TripStatus.completed.value,
             "accounts_image_url": payload.accounts_image_url,
             "driver_balance": payload.driver_balance,
+            "start_km": payload.start_km,
+            "end_km": payload.end_km,
+            "fuel_litres": payload.fuel_litres,
             "end_date": payload.end_date or _now().date(),
             "closed_at": _now(),
             "updated_at": _now(),
         }
     )
-    await db.loads.update_one({"_id": oid(load_id)}, {"$set": updates})
+    await db.loads.update_one({"id": load_id}, {"$set": updates})
 
     # Free the vehicle (only clear active_load_id if it pointed at this load).
     vehicle = await owned_vehicle_or_none(db, current["id"], existing.get("vehicle_id"))
@@ -138,21 +138,21 @@ async def close_load(load_id: str, payload: CloseTrip, current: CurrentUser, db:
         vset = {"status": VehicleStatus.empty.value, "updated_at": _now()}
         if str(vehicle.get("active_load_id")) == load_id:
             vset["active_load_id"] = None
-        await db.vehicles.update_one({"_id": vehicle["_id"]}, {"$set": vset})
+        await db.vehicles.update_one({"id": vehicle["id"]}, {"$set": vset})
 
-    fresh = await db.loads.find_one({"_id": oid(load_id)})
+    fresh = await db.loads.find_one({"id": load_id})
     return _out(fresh, (vehicle or {}).get("registration_number"))
 
 
 @router.delete("/{load_id}", response_model=Message)
 async def delete_load(load_id: str, current: CurrentUser, db: DbDep):
     existing = await _owned_load(db, current["id"], load_id)
-    await db.loads.delete_one({"_id": oid(load_id)})
+    await db.loads.delete_one({"id": load_id})
     # If this was the vehicle's active load, mark it empty again.
     vehicle = await owned_vehicle_or_none(db, current["id"], existing.get("vehicle_id"))
     if vehicle is not None and str(vehicle.get("active_load_id")) == load_id:
         await db.vehicles.update_one(
-            {"_id": vehicle["_id"]},
+            {"id": vehicle["id"]},
             {"$set": {"status": VehicleStatus.empty.value, "active_load_id": None, "updated_at": _now()}},
         )
     return Message(message="Load deleted.")

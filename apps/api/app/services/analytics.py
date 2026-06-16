@@ -3,8 +3,7 @@
 from collections import defaultdict
 from datetime import date
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
-
+from app.db.sql import Database
 from app.models.enums import VehicleStatus
 from app.services.loads import compute_totals, route_summary
 from app.services.status import build_document_statuses
@@ -47,13 +46,13 @@ def _load_date(load: dict) -> date | None:
     return _d(load.get("end_date")) or _d(load.get("start_date")) or _d(load.get("created_at"))
 
 
-async def build_dashboard(db: AsyncIOMotorDatabase, owner_id: str, today: date, months: int = 6) -> dict:
+async def build_dashboard(db: Database, owner_id: str, today: date, months: int = 6) -> dict:
     vehicles = await db.vehicles.find({"owner_id": owner_id}).to_list(length=5000)
     loads = await db.loads.find({"owner_id": owner_id}).to_list(length=20000)
 
-    reg_by_id = {str(v["_id"]): v.get("registration_number", "") for v in vehicles}
-    body_by_id = {str(v["_id"]): v.get("body_type") for v in vehicles}
-    status_by_id = {str(v["_id"]): v.get("status", "empty") for v in vehicles}
+    reg_by_id = {v["id"]: v.get("registration_number", "") for v in vehicles}
+    body_by_id = {v["id"]: v.get("body_type") for v in vehicles}
+    status_by_id = {v["id"]: v.get("status", "empty") for v in vehicles}
 
     # Monthly profit series (completed trips only).
     series = _last_n_months(months, today)
@@ -165,14 +164,14 @@ async def build_dashboard(db: AsyncIOMotorDatabase, owner_id: str, today: date, 
     }
 
 
-async def vehicle_profit_list(db: AsyncIOMotorDatabase, owner_id: str) -> list[dict]:
+async def vehicle_profit_list(db: Database, owner_id: str) -> list[dict]:
     """Per-vehicle profit summary across all completed trips."""
     dash = await build_dashboard(db, owner_id, date.today(), months=12)
     summary = {v["vehicle_id"]: v for v in dash["top_vehicles"]}
     vehicles = await db.vehicles.find({"owner_id": owner_id}).sort("created_at", -1).to_list(length=5000)
     out = []
     for v in vehicles:
-        vid = str(v["_id"])
+        vid = v["id"]
         s = summary.get(vid)
         out.append(
             s
@@ -191,7 +190,7 @@ async def vehicle_profit_list(db: AsyncIOMotorDatabase, owner_id: str) -> list[d
     return out
 
 
-async def trips_for_vehicle(db: AsyncIOMotorDatabase, owner_id: str, vehicle_id: str) -> list[dict]:
+async def trips_for_vehicle(db: Database, owner_id: str, vehicle_id: str) -> list[dict]:
     loads = (
         await db.loads.find({"owner_id": owner_id, "vehicle_id": vehicle_id})
         .sort("created_at", -1)
@@ -202,7 +201,7 @@ async def trips_for_vehicle(db: AsyncIOMotorDatabase, owner_id: str, vehicle_id:
         totals = compute_totals(load.get("legs") or [])
         rows.append(
             {
-                "load_id": str(load["_id"]),
+                "load_id": load["id"],
                 "route": route_summary(load.get("legs") or []) or "—",
                 "status": load.get("status", "ongoing"),
                 "start_date": str(_d(load.get("start_date"))) if load.get("start_date") else None,

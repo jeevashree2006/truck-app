@@ -7,7 +7,7 @@ latest document dates.
 
 from datetime import datetime, timezone
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.db.sql import Database
 
 from app.models.common import serialize_doc
 from app.models.enums import DocStatus, NotificationType
@@ -25,7 +25,7 @@ _DOC_LABELS = {
 }
 
 
-async def build_reminders(db: AsyncIOMotorDatabase, owner_id: str) -> list[dict]:
+async def build_reminders(db: Database, owner_id: str) -> list[dict]:
     vehicles = await db.vehicles.find({"owner_id": owner_id}).to_list(length=2000)
     reminders: list[dict] = []
     for v in vehicles:
@@ -60,7 +60,7 @@ async def build_reminders(db: AsyncIOMotorDatabase, owner_id: str) -> list[dict]
     return reminders
 
 
-async def daily_summary(db: AsyncIOMotorDatabase, owner_id: str) -> dict:
+async def daily_summary(db: Database, owner_id: str) -> dict:
     reminders = await build_reminders(db, owner_id)
     title = "Fleet daily summary"
     body = "All documents valid. You're all set." if not reminders else f"{len(reminders)} document alert(s). Tap to review."

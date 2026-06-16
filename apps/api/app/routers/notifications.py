@@ -64,7 +64,7 @@ async def send_daily_summary(current: CurrentUser, db: DbDep):
             "title": summary["title"],
             "body": summary["body"],
             "vehicle_id": None,
-            "read": False,
+            "is_read": False,
             "created_at": datetime.now(timezone.utc),
         }
     )

@@ -1,6 +1,6 @@
 """Seed the database with a demo owner + realistic lorry/load data.
 
-Usage (with MONGODB_URI configured in .env or env):
+Usage (with the MySQL connection configured in .env or env):
     python seed_demo.py
 
 Prints a demo mobile + email you can sign in with (request an OTP; dev mode returns
@@ -10,9 +10,7 @@ the code). Safe to re-run: it wipes and recreates the demo owner's data only.
 import asyncio
 from datetime import date, datetime, timedelta, timezone
 
-from motor.motor_asyncio import AsyncIOMotorClient
-
-from app.core.config import settings
+from app.db.sql import Database, async_session, dispose_db, init_db
 
 DEMO_MOBILE = "9000000001"
 DEMO_EMAIL = "owner@demo.fleet"
@@ -36,8 +34,9 @@ def leg(frm, to, rent, commission, salary, fastag, diesel, advance):
 
 
 async def main() -> None:
-    client = AsyncIOMotorClient(settings.mongodb_uri)
-    db = client[settings.mongodb_db]
+    await init_db()
+    session = async_session()
+    db = Database(session)
     now = datetime.now(timezone.utc)
 
     user = await db.users.find_one({"mobile": DEMO_MOBILE})
@@ -46,23 +45,23 @@ async def main() -> None:
             {"name": "Demo Owner", "mobile": DEMO_MOBILE, "email": DEMO_EMAIL, "language": "en",
              "theme": "system", "push_tokens": [], "created_at": now}
         )
-        owner_id = str(res.inserted_id)
+        owner_id = res.inserted_id
     else:
-        owner_id = str(user["_id"])
+        owner_id = user["id"]
 
-    for coll in ("vehicles", "loads", "repairs", "notifications"):
-        await db[coll].delete_many({"owner_id": owner_id})
+    for coll in (db.vehicles, db.loads, db.repairs, db.notifications):
+        await coll.delete_many({"owner_id": owner_id})
 
     fleet = [
         {"reg": "TN28AB1234", "axle": "multi", "feet": 32, "body": "container", "age": 3, "make": "Tata",
-         "model": "LPT 3118", "docs": {"rc": 900, "ddc": 300, "insurance": 18, "fitness": 120, "permit": -5,
-                                       "road_tax": 400, "puc": 9}},
+         "model": "BS6", "docs": {"rc": 900, "ddc": 300, "insurance": 18, "fitness": 120, "permit": -5,
+                                  "road_tax": 400, "puc": 9}},
         {"reg": "TN29CD5678", "axle": "single", "feet": 20, "body": "open", "age": 5, "make": "Ashok Leyland",
-         "model": "Ecomet", "docs": {"rc": 1100, "ddc": 500, "insurance": 210, "fitness": 45, "permit": 300,
-                                     "road_tax": 60, "puc": 170}},
+         "model": "BS4", "docs": {"rc": 1100, "ddc": 500, "insurance": 210, "fitness": 45, "permit": 300,
+                                  "road_tax": 60, "puc": 170}},
         {"reg": "TN30EF9012", "axle": "multi", "feet": 32, "body": "trailer", "age": 2, "make": "BharatBenz",
-         "model": "2823R", "docs": {"rc": 1400, "ddc": 700, "insurance": 95, "fitness": 260, "permit": 25,
-                                    "road_tax": 500, "puc": -12}},
+         "model": "BS6", "docs": {"rc": 1400, "ddc": 700, "insurance": 95, "fitness": 260, "permit": 25,
+                                  "road_tax": 500, "puc": -12}},
     ]
 
     vehicle_ids = []
@@ -80,7 +79,7 @@ async def main() -> None:
              "documents": documents, "status": "empty", "active_load_id": None,
              "created_at": now, "updated_at": now}
         )
-        vehicle_ids.append((str(res.inserted_id), v["reg"]))
+        vehicle_ids.append((res.inserted_id, v["reg"]))
 
     # Completed multi-leg loads (with profit) across recent months.
     sample_loads = [
@@ -93,12 +92,21 @@ async def main() -> None:
         (0, [leg("Salem", "Hyderabad", 52000, 2200, 5000, 1400, [(14000, 48)], [(20000, 49)])], 50, 46),
         (1, [leg("Erode", "Kochi", 28000, 1200, 2800, 700, [(8000, 60)], [(10000, 61)])], 62, 60),
     ]
+    base_km = 100000
     for vidx, legs, ds, de in sample_loads:
         vid, _ = vehicle_ids[vidx]
+        # Odometer + fuel so each closed trip has a realistic mileage (km/litre).
+        rent = sum(l["total_rent"] for l in legs)
+        diesel = sum(e["amount"] for l in legs for e in l.get("diesel", []))
+        km = round(rent / 75)                     # rent ≈ distance proxy
+        litres = round(diesel / 95) or 1          # diesel ₹ / ~95 ₹ per litre
+        start_km, end_km = base_km, base_km + km
+        base_km = end_km + 1500
         await db.loads.insert_one(
             {"owner_id": owner_id, "vehicle_id": vid, "status": "completed",
              "start_date": days_from_now(-ds), "end_date": days_from_now(-de), "notes": None,
              "legs": legs, "accounts_image_url": None, "driver_balance": 5000,
+             "start_km": float(start_km), "end_km": float(end_km), "fuel_litres": float(litres),
              "created_at": now - timedelta(days=ds), "closed_at": now - timedelta(days=de)}
         )
 
@@ -112,8 +120,8 @@ async def main() -> None:
          "created_at": now, "closed_at": None}
     )
     await db.vehicles.update_one(
-        {"_id": __import__("bson").ObjectId(vid0)},
-        {"$set": {"status": "on_the_way", "active_load_id": str(ongoing.inserted_id)}},
+        {"id": vid0},
+        {"$set": {"status": "on_the_way", "active_load_id": ongoing.inserted_id}},
     )
 
     # A couple of repairs.
@@ -129,7 +137,9 @@ async def main() -> None:
     print(f"  Owner email  : {DEMO_EMAIL}")
     print(f"  Vehicles     : {len(vehicle_ids)}  Loads: {len(sample_loads) + 1}")
     print("Sign in by requesting an OTP for the mobile or email (dev mode returns the code).")
-    client.close()
+    await session.commit()
+    await session.close()
+    await dispose_db()
 
 
 if __name__ == "__main__":

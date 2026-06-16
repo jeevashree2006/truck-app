@@ -14,8 +14,9 @@ class MoneyEntry(BaseModel):
 
 
 class LegBase(BaseModel):
-    loading_point: str = Field(min_length=1, max_length=120)
-    unloading_point: str = Field(min_length=1, max_length=120)
+    # Empty by default: "New Load" creates a blank leg the owner fills in later in the editor.
+    loading_point: str = Field(default="", max_length=120)
+    unloading_point: str = Field(default="", max_length=120)
     total_rent: float = Field(default=0, ge=0)
     commission: float = Field(default=0, ge=0)        # transport commission
     driver_salary: float = Field(default=0, ge=0)
@@ -73,6 +74,10 @@ class CloseTrip(BaseModel):
     accounts_image_url: str | None = None  # "kanakku sheet" photo
     driver_balance: float | None = Field(default=None, ge=0)  # cash returned by driver
     end_date: date | None = None
+    # Odometer + fuel captured at close → trip mileage (km per litre).
+    start_km: float | None = Field(default=None, ge=0)
+    end_km: float | None = Field(default=None, ge=0)
+    fuel_litres: float | None = Field(default=None, ge=0)
 
 
 class LoadOut(BaseModel):
@@ -87,6 +92,11 @@ class LoadOut(BaseModel):
     legs: list[LegOut] = Field(default_factory=list)
     accounts_image_url: str | None = None
     driver_balance: float | None = None
+    # Odometer + fuel + derived mileage (km/litre); set when the trip is closed.
+    start_km: float | None = None
+    end_km: float | None = None
+    fuel_litres: float | None = None
+    mileage: float | None = None
     totals: LoadTotals = Field(default_factory=LoadTotals)
     created_at: datetime | None = None
     closed_at: datetime | None = None

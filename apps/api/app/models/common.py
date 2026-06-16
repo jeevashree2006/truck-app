@@ -1,14 +1,12 @@
 from datetime import date, datetime
 from typing import Any
 
-from bson import ObjectId
-
 
 def to_mongo(data: Any) -> Any:
-    """Recursively convert Python date/datetime values to ISO strings for BSON storage.
+    """Recursively convert date/datetime values to ISO strings.
 
-    We store dates as ISO strings (date -> 'YYYY-MM-DD', datetime -> RFC3339) so the
-    documents stay human-readable in Atlas and round-trip cleanly through Pydantic.
+    Used for the JSON-stored nested structures (legs, documents) so they round-trip
+    cleanly through MySQL JSON and Pydantic. (Name kept for historical continuity.)
     """
     if isinstance(data, dict):
         return {k: to_mongo(v) for k, v in data.items()}
@@ -22,18 +20,12 @@ def to_mongo(data: Any) -> Any:
 
 
 def serialize_doc(doc: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Convert a raw Mongo document into an API-friendly dict (`_id` -> `id`)."""
+    """Normalize a row dict for the API. Rows already use a string `id`, so this is a
+    light passthrough (kept so callers don't need to change)."""
     if doc is None:
         return None
     out = dict(doc)
-    _id = out.pop("_id", None)
+    _id = out.pop("_id", None)  # legacy safety
     if _id is not None:
         out["id"] = str(_id)
     return out
-
-
-def oid(value: str) -> ObjectId:
-    """Parse a string into an ObjectId, raising ValueError on bad input."""
-    if not ObjectId.is_valid(value):
-        raise ValueError("Invalid id")
-    return ObjectId(value)

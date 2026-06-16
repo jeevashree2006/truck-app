@@ -1,10 +1,10 @@
 """Pure profit/accounting logic for loads (multi-leg trips).
 
 Profit model (confirmed with the owner):
-    spend  = diesel + commission + driver_salary + fastag      (per leg, summed)
+    spend  = diesel + commission + driver_salary + fastag + advance   (per leg, summed)
     profit = total_rent - spend
-Advances are NOT part of spend — they are cash floated to the driver and are
-reconciled separately against the balance the driver returns.
+Advances ARE counted as spend (the owner's decision). The driver-balance figure is a
+separate reconciliation of the cash the driver should return.
 """
 
 from app.models.common import serialize_doc
@@ -57,7 +57,10 @@ def compute_totals(legs: list[dict], driver_balance: float | None = None) -> dic
     # Driver settlement: of the advance floated, the cash a driver typically spends is
     # diesel + fastag; the rest should come back. Owners can override via driver_balance.
     expected_balance = max(0.0, total_advance - (total_diesel + total_fastag))
-    # Freight received summed across legs (each leg paid by its own transporter).
+    # Freight is per leg (each leg paid by its own transporter), so received/pending are
+    # summed per leg — an overpayment on one leg must NOT cancel a shortfall on another.
+    # "Fully paid" therefore means no leg is still owed (pending == 0), not just that the
+    # total collected reached the total rent.
     freight_received = sum(l["freight_received"] for l in computed)
     freight_pending = sum(l["freight_pending"] for l in computed)
     return {
@@ -73,7 +76,7 @@ def compute_totals(legs: list[dict], driver_balance: float | None = None) -> dic
         "expected_driver_balance": round(expected_balance, 2),
         "freight_received": round(freight_received, 2),
         "freight_pending": round(freight_pending, 2),
-        "freight_fully_paid": total_rent > 0 and freight_received >= total_rent - 0.01,
+        "freight_fully_paid": total_rent > 0 and freight_pending <= 0.01,
     }
 
 
@@ -90,6 +93,17 @@ def route_summary(legs: list[dict]) -> str:
     return " → ".join(points)
 
 
+def trip_mileage(start_km, end_km, fuel_litres) -> float | None:
+    """km per litre for the trip = (end_km - start_km) / fuel_litres, when all are valid."""
+    try:
+        sk, ek, fl = float(start_km), float(end_km), float(fuel_litres)
+    except (TypeError, ValueError):
+        return None
+    if fl <= 0 or ek <= sk:
+        return None
+    return round((ek - sk) / fl, 2)
+
+
 def serialize_load(doc: dict) -> dict:
     """Convert a raw load document into the enriched API shape."""
     load = serialize_doc(doc)
@@ -98,4 +112,5 @@ def serialize_load(doc: dict) -> dict:
     load["legs"] = computed_legs
     load["totals"] = compute_totals(legs, load.get("driver_balance"))
     load["route"] = route_summary(legs)
+    load["mileage"] = trip_mileage(load.get("start_km"), load.get("end_km"), load.get("fuel_litres"))
     return load

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.deps import CurrentUser, DbDep
-from app.models.common import oid, to_mongo
+from app.models.common import to_mongo
 from app.models.enums import VehicleStatus
 from app.schemas.common import Message
 from app.schemas.vehicle import StatusUpdate, VehicleCreate, VehicleOut, VehicleUpdate
@@ -48,7 +48,7 @@ async def create_vehicle(payload: VehicleCreate, current: CurrentUser, db: DbDep
     doc["created_at"] = _now()
     doc["updated_at"] = _now()
     result = await db.vehicles.insert_one(doc)
-    created = await db.vehicles.find_one({"_id": result.inserted_id})
+    created = await db.vehicles.find_one({"id": result.inserted_id})
     return VehicleOut(**await _with_profit(db, current["id"], created))
 
 
@@ -70,8 +70,8 @@ async def update_vehicle(vehicle_id: str, payload: VehicleUpdate, current: Curre
     if "registration_number" in updates:
         updates["registration_number"] = updates["registration_number"].upper()
     updates["updated_at"] = _now()
-    await db.vehicles.update_one({"_id": oid(vehicle_id)}, {"$set": updates})
-    fresh = await db.vehicles.find_one({"_id": oid(vehicle_id)})
+    await db.vehicles.update_one({"id": vehicle_id}, {"$set": updates})
+    fresh = await db.vehicles.find_one({"id": vehicle_id})
     return VehicleOut(**await _with_profit(db, current["id"], fresh))
 
 
@@ -82,9 +82,9 @@ async def update_status(vehicle_id: str, payload: StatusUpdate, current: Current
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
     await db.vehicles.update_one(
-        {"_id": oid(vehicle_id)}, {"$set": {"status": payload.status.value, "updated_at": _now()}}
+        {"id": vehicle_id}, {"$set": {"status": payload.status.value, "updated_at": _now()}}
     )
-    fresh = await db.vehicles.find_one({"_id": oid(vehicle_id)})
+    fresh = await db.vehicles.find_one({"id": vehicle_id})
     return VehicleOut(**await _with_profit(db, current["id"], fresh))
 
 
@@ -93,7 +93,7 @@ async def delete_vehicle(vehicle_id: str, current: CurrentUser, db: DbDep):
     doc = await owned_vehicle_or_none(db, current["id"], vehicle_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
-    await db.vehicles.delete_one({"_id": oid(vehicle_id)})
+    await db.vehicles.delete_one({"id": vehicle_id})
     await db.loads.delete_many({"vehicle_id": vehicle_id})
     await db.repairs.delete_many({"vehicle_id": vehicle_id})
     return Message(message="Vehicle and related loads/repairs deleted.")

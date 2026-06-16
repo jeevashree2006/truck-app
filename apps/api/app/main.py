@@ -5,10 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.db.mongo import close_mongo_connection, connect_to_mongo, state
+from app.db.sql import dispose_db, init_db, ping
 from app.routers import (
     analytics,
     auth,
+    drivers,
     loads,
     notifications,
     repairs,
@@ -25,12 +26,12 @@ logger = logging.getLogger("fleet")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        await connect_to_mongo()
-        logger.info("Connected to MongoDB (%s)", settings.mongodb_db)
+        await init_db()
+        logger.info("Connected to MySQL (%s) and ensured schema", settings.mysql_db)
     except Exception:  # noqa: BLE001 - allow the app to boot so /health reports the issue
-        logger.exception("MongoDB connection failed at startup")
+        logger.exception("MySQL connection/schema setup failed at startup")
     yield
-    await close_mongo_connection()
+    await dispose_db()
 
 
 app = FastAPI(
@@ -50,7 +51,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth, users, vehicles, loads, repairs, analytics, notifications, reports):
+for r in (auth, users, vehicles, drivers, loads, repairs, analytics, notifications, reports):
     app.include_router(r.router, prefix="/api/v1")
 
 
@@ -61,13 +62,7 @@ async def root():
 
 @app.get("/health", response_model=HealthResponse, tags=["meta"])
 async def health():
-    db_status = "down"
-    try:
-        if state.client is not None:
-            await state.client.admin.command("ping")
-            db_status = "up"
-    except Exception:  # noqa: BLE001
-        db_status = "down"
+    db_status = "up" if await ping() else "down"
     return HealthResponse(status="ok", app=settings.app_name, env=settings.env, db=db_status)
 
 

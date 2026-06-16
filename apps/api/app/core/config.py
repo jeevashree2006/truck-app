@@ -13,9 +13,14 @@ class Settings(BaseSettings):
     env: str = "development"
     cors_origins: str = "http://localhost:3000,http://localhost:8081,http://localhost:19006"
 
-    # Mongo
-    mongodb_uri: str = "mongodb://localhost:27017"
-    mongodb_db: str = "fleet"
+    # MySQL. Either set DATABASE_URL directly (a SQLAlchemy async DSN such as
+    # mysql+asyncmy://user:pass@host:3306/fleet) or the individual MYSQL_* parts below.
+    database_url: str = ""
+    mysql_host: str = "127.0.0.1"
+    mysql_port: int = 3306
+    mysql_user: str = "root"
+    mysql_password: str = ""
+    mysql_db: str = "fleet"
 
     # JWT
     jwt_secret: str = "change-me-in-production"
@@ -76,6 +81,19 @@ class Settings(BaseSettings):
 
     # Push (Expo)
     expo_access_token: str = ""
+
+    @property
+    def sqlalchemy_url(self) -> str:
+        """Async SQLAlchemy DSN. Uses DATABASE_URL if set, else builds from MYSQL_* parts."""
+        if self.database_url:
+            return self.database_url
+        from urllib.parse import quote_plus
+
+        pwd = quote_plus(self.mysql_password)
+        return (
+            f"mysql+asyncmy://{self.mysql_user}:{pwd}"
+            f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_db}"
+        )
 
     @property
     def cors_origin_list(self) -> list[str]:
