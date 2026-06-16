@@ -1,6 +1,8 @@
 """Email delivery.
 
-Three ways, tried in order:
+Tried in order:
+  0) Google Apps Script relay (if GAS_WEBHOOK_URL is set) — sends from your own Gmail
+     over HTTPS, so it works on hosts that block SMTP (Render etc.).
   1) SMTP via Python's stdlib `smtplib` (e.g. Gmail + App Password) — FREE, no extra deps.
   2) SendGrid API (if SENDGRID_API_KEY is set).
   3) Console log fallback (dev) — so the flow works with zero setup.
@@ -41,6 +43,23 @@ def _send_smtp_sync(to: str, subject: str, html: str, text: str | None) -> None:
 
 
 async def send_email(to: str, subject: str, html: str, text: str | None = None) -> bool:
+    # 0) Google Apps Script relay — sends from your OWN Gmail over HTTPS, so it works on
+    #    hosts that block SMTP (Render). Preferred when GAS_WEBHOOK_URL is set.
+    if settings.gas_webhook_url:
+        try:
+            import httpx
+
+            payload = {"to": to, "subject": subject, "html": html, "text": text or _strip(html)}
+            if settings.gas_shared_secret:
+                payload["secret"] = settings.gas_shared_secret
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+                resp = await client.post(settings.gas_webhook_url, json=payload)
+            if 200 <= resp.status_code < 300 and "OK" in resp.text:
+                return True
+            logger.error("Apps Script email failed: HTTP %s — %s", resp.status_code, resp.text[:200])
+        except Exception:  # noqa: BLE001
+            logger.exception("Apps Script email send failed; trying next method")
+
     # 1) SMTP (Gmail etc.) — free, stdlib only.
     if settings.smtp_user and settings.smtp_password:
         try:

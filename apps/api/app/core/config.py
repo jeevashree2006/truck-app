@@ -51,10 +51,19 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     # SendGrid (alternative)
     sendgrid_api_key: str = ""
+    # Google Apps Script relay — send email from your OWN Gmail over HTTPS, so it works
+    # on hosts that block SMTP (Render, etc.). Deploy the script in deploy/apps-script/,
+    # then set GAS_WEBHOOK_URL to its /exec URL and GAS_SHARED_SECRET to the same secret.
+    gas_webhook_url: str = ""
+    gas_shared_secret: str = ""
 
     @property
     def has_email_provider(self) -> bool:
-        return bool((self.smtp_user and self.smtp_password) or self.sendgrid_api_key)
+        return bool(
+            self.gas_webhook_url
+            or (self.smtp_user and self.smtp_password)
+            or self.sendgrid_api_key
+        )
 
     # SMS. If none configured, OTP SMS is logged to console (dev mode).
     # Fast2SMS (India; easiest — OTP route needs no DLT template):
