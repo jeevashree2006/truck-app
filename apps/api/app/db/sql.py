@@ -266,7 +266,18 @@ class Database:
 # ---------------------------------------------------------------------------
 # Engine / session / lifecycle
 # ---------------------------------------------------------------------------
-engine = create_async_engine(settings.sqlalchemy_url, pool_pre_ping=True, pool_recycle=1800)
+def _engine_connect_args() -> dict:
+    """TLS for managed MySQL (TiDB Serverless / Aiven / PlanetScale) when DB_SSL=true."""
+    if settings.db_ssl:
+        import ssl as _ssl
+
+        return {"ssl": _ssl.create_default_context()}
+    return {}
+
+
+engine = create_async_engine(
+    settings.sqlalchemy_url, pool_pre_ping=True, pool_recycle=1800, connect_args=_engine_connect_args()
+)
 async_session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 

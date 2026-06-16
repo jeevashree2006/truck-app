@@ -1,153 +1,95 @@
-# Deployment Guide — Fleet Owner
+# Deployment Guide — Lorry Kanakku (100% free)
 
-Ship **one web codebase** to **web + Android + iOS**.
+Three pieces, each on a free-forever host:
 
-```
-                 ┌─────────────────────────┐
-                 │  apps/api  (FastAPI)     │  ← Railway / Render (Docker)
-                 │  + MongoDB Atlas (M0)    │
-                 └───────────▲─────────────┘
-                             │  HTTPS  /api/v1/*
-        ┌────────────────────┼────────────────────┐
-        │                    │                     │
-  ┌─────┴───────┐     ┌──────┴───────┐      ┌──────┴───────┐
-  │ Web (Vercel) │    │ Android app   │      │ iOS app       │
-  │ apps/web     │    │ Capacitor +   │      │ Capacitor +   │
-  │              │    │ apps/web/dist │      │ apps/web/dist │
-  └──────────────┘    └───────────────┘      └───────────────┘
-```
+| Layer | Host | Cost | Notes |
+|---|---|---|---|
+| **Database** (MySQL) | **TiDB Cloud Serverless** | Free forever (25 GB) | MySQL-compatible, requires TLS (`DB_SSL=true`) |
+| **API** (FastAPI, `apps/api`) | **Render** (Docker) | Free | Spins down when idle → ~50 s cold start; keep warm with a free pinger |
+| **Web** (Vite, `apps/web`) | **Vercel** | Free forever | Static build |
 
-Android/iOS are **Capacitor wrappers around the built web app** (`apps/web/dist`). They bundle the web
-UI and call the same hosted API over HTTPS — **one codebase, three targets**.
-
-> The old `apps/mobile` Expo app is **retired**: it's feature-behind (no freight payments, no BS
-> model dropdown, old profit formula) and keeping it means maintaining everything twice.
-
-| Component | Target | Cost |
-|-----------|--------|------|
-| Database | **MongoDB Atlas** M0 | Free |
-| Backend (FastAPI) | **Railway** (or Render) — Docker | ~$5/mo (Railway) / free (Render, sleeps) |
-| Web dashboard | **Vercel** (Vite) | Free |
-| Android | **Capacitor → .aab →** Play Store | $25 once |
-| iOS | **Capacitor → Xcode →** App Store | $99/yr |
-
-**Local tooling:** Node 18+, Android Studio (Android), Xcode + CocoaPods (iOS — Mac only).
+`$` = run in a terminal · **→** = click in the browser. Repo: `github.com/jeevashree2006/truck-app`.
 
 ---
 
-## Phase 1 — Database (MongoDB Atlas)
+## 1 · Database — TiDB Cloud Serverless (free MySQL)
 
-1. Create a free **M0 cluster** at <https://cloud.mongodb.com>.
-2. **Database Access** → add a user (username + strong password).
-3. **Network Access** → allow `0.0.0.0/0` (host IPs are dynamic).
-4. **Connect → Drivers** → copy the string → this is `MONGODB_URI`.
-   The app auto-creates collections + indexes on first boot.
+1. **→** [tidbcloud.com](https://tidbcloud.com) → sign up → **Create Cluster → Serverless** (free) → create.
+2. **→** **Connect** → set/copy a password → note **Host**, **Port (4000)**, **User**, **Password**, and **Database** (create one called `fleet`, or use `test`).
+3. Build your connection string (used as `DATABASE_URL`):
+   ```
+   mysql+asyncmy://<user>:<password>@<host>:4000/fleet
+   ```
+   TiDB requires TLS → you'll set `DB_SSL=true` on the API (step 2).
+
+> Alternative free MySQL: **Aiven for MySQL** (free plan) — same idea, also needs `DB_SSL=true`.
 
 ---
 
-## Phase 2 — API (Railway, or Render)
+## 2 · API — Render (free, from the Dockerfile)
 
-`apps/api/Dockerfile` is ready and respects `$PORT`. CORS is env-driven.
+Generate a JWT secret and grab your email password first:
+```bash
+$ python3 -c "import secrets; print(secrets.token_urlsafe(48))"      # → JWT_SECRET
+$ grep SMTP_PASSWORD apps/api/.env                                   # → SMTP_PASSWORD
+```
 
-1. **New Project → Deploy from GitHub** → pick this repo.
-2. **Root directory:** `apps/api` (the Dockerfile is auto-detected).
-3. Add **Variables** (see `apps/api/.env.example` for the full list):
+1. **→** [render.com](https://render.com) → **New → Web Service** → connect the GitHub repo → pick **truck-app**.
+2. **Branch:** `mysql-migration` (or `main` after you merge) · **Root Directory:** `apps/api` · **Runtime:** Docker (auto-detected from `apps/api/Dockerfile`). Instance type: **Free**.
+3. **Environment variables:**
    ```
    ENV            = production
-   MONGODB_URI    = mongodb+srv://...            # from Phase 1
-   MONGODB_DB     = fleet
-   JWT_SECRET     = <python -c "import secrets;print(secrets.token_urlsafe(48))">
+   DATABASE_URL   = mysql+asyncmy://<user>:<pass>@<host>:4000/fleet   # from step 1
+   DB_SSL         = true
+   JWT_SECRET     = <token_urlsafe output>
    SMTP_USER      = truckapp02@gmail.com
    SMTP_PASSWORD  = <16-char Gmail App Password, no spaces>
    EMAIL_FROM     = truckapp02@gmail.com
    CORS_ORIGINS   = capacitor://localhost,http://localhost,https://localhost
    ```
-   > **CORS note:** any `https://*.vercel.app` origin is already allowed by a regex in the API, so you
-   > don't need to list the Vercel URL. You **do** need the three `localhost` origins above — those are
-   > what the Capacitor Android/iOS apps use. For a custom web domain, add it to `CORS_ORIGINS` too.
-4. Deploy → you get a public URL, e.g. `https://fleet-api-production.up.railway.app`.
-5. Verify: `curl https://<url>/health` → `{"db":"up"}`, and `https://<url>/docs` loads Swagger.
-6. (Optional) seed demo data: run `python seed_demo.py` from a shell with the same env.
+   > Any `https://*.vercel.app` origin is already allowed by a regex in the API, so you don't list the Vercel URL. Add a custom web domain to `CORS_ORIGINS` if you use one.
+4. Deploy → you get e.g. `https://lorry-kanakku-api.onrender.com`.
+5. Verify: `curl https://<that-url>/health` → `{"db":"up"}` and open `/docs`.
+6. (Optional) seed demo data: Render shell → `python seed_demo.py`.
+7. **Keep it awake** (free instances sleep): add the URL to a free **UptimeRobot** / **cron-job.org** ping every ~10 min.
 
 ---
 
-## Phase 3 — Web (Vercel)
+## 3 · Web — Vercel (free)
 
-1. **Add New → Project** → import this repo.
-2. **Root Directory:** `apps/web`. Framework preset: **Vite** (build `npm run build`, output `dist`).
-3. **Environment Variables:**
+1. **→** [vercel.com](https://vercel.com) → **Add New → Project** → import **truck-app**.
+2. **Root Directory:** `apps/web` · Framework: **Vite** (auto) · Branch: `mysql-migration` (or `main`).
+3. **Environment variables:**
    ```
    VITE_USE_MOCKS = false
-   VITE_API_URL   = https://<your-railway-url>     # Phase 2, no trailing slash
+   VITE_API_URL   = https://<your-render-url>      # step 2, no trailing slash
    ```
-4. Deploy → `https://YOUR-WEB.vercel.app`. (`vercel.json` already handles SPA routing.)
-5. Smoke test: sign up → confirm a real OTP email arrives → log in.
+4. **Deploy** → `https://your-app.vercel.app`. (`vercel.json` already handles SPA routing.)
+5. Test: open the site → sign up → a real OTP email arrives → log in.
+
+That's it — **web + API + MySQL, all free.**
 
 ---
 
-## Phase 4 — Android + iOS (Capacitor)
+## Mobile (optional) — Android + iOS via Capacitor
 
-All commands run in `apps/web`.
-
-**One-time setup**
+The same `apps/web` build wraps into native apps (build is free; store fees: Play **$25** once, Apple **$99/yr**).
 ```bash
 cd apps/web
-npm i -D @capacitor/cli
-npm i @capacitor/core @capacitor/android @capacitor/ios
-npx cap init "Fleet Owner" "app.fleetowner.mobile" --web-dir=dist
+npm i -D @capacitor/cli && npm i @capacitor/core @capacitor/android @capacitor/ios
+npx cap init "Lorry Kanakku" "app.lorrykanakku.mobile" --web-dir=dist
+VITE_USE_MOCKS=false VITE_API_URL=https://<render-url> npm run build
+npx cap add android && npx cap add ios && npx cap sync
+npx cap open android   # build a signed .aab → Play Console
+npx cap open ios       # Xcode → Archive → App Store (Mac only)
 ```
-> `app.fleetowner.mobile` is the bundle/app ID — change it to your own reverse-domain
-> (e.g. `com.yourname.fleetowner`) before publishing; it can't change after store release.
-
-**Build the web against the PRODUCTION api, then add platforms**
-```bash
-VITE_USE_MOCKS=false VITE_API_URL=https://<your-railway-url> npm run build
-npx cap add android
-npx cap add ios
-npx cap sync
-```
-> After **any** web change, re-run the `npm run build` line + `npx cap sync` to refresh the
-> native bundles.
-
-**Android → Play Store**
-```bash
-npx cap open android        # Android Studio
-```
-- Build → *Generate Signed Bundle / APK* → **Android App Bundle (.aab)** → create a keystore (back it up!).
-- Upload the `.aab` in Play Console → fill the listing → submit for review.
-
-**iOS → App Store** (Mac + Xcode)
-```bash
-cd ios/App && pod install && cd -
-npx cap open ios            # Xcode
-```
-- *Signing & Capabilities* → select your **Team** (Apple Developer account).
-- Product → Archive → distribute to **App Store Connect** → submit for review.
+The API's `CORS_ORIGINS` already includes the `capacitor://localhost` / `localhost` origins the apps use.
 
 ---
 
-## Notifications & scheduled jobs (optional, already wired)
+## Env var reference
+- **API (Render):** `ENV`, `DATABASE_URL`, `DB_SSL=true`, `JWT_SECRET`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, `CORS_ORIGINS`
+- **Web (Vercel) + Capacitor build:** `VITE_USE_MOCKS=false`, `VITE_API_URL=<render url>`
 
-- **Email OTP** uses Gmail SMTP (set `SMTP_USER` + `SMTP_PASSWORD`). Falls back to console in dev.
-- **Daily document-expiry summary:** schedule a daily `POST /api/v1/notifications/daily-summary/send`
-  (Railway Cron / GitHub Action / cron-job.org) to email owners about expiring docs.
-
----
-
-## Secrets — never commit these
-
-`apps/api/.env` and `apps/web/.env` are git-ignored (verified). The Gmail App Password lives **only** in
-your local `apps/api/.env` and the host's Variables. If it's ever leaked, rotate it at
-<https://myaccount.google.com/apppasswords>.
-
-## Env var quick reference
-
-- **API (Railway/Render):** `ENV`, `MONGODB_URI`, `MONGODB_DB`, `JWT_SECRET`, `SMTP_USER`,
-  `SMTP_PASSWORD`, `EMAIL_FROM`, `CORS_ORIGINS`
-- **Web (Vercel) + Capacitor build:** `VITE_USE_MOCKS=false`, `VITE_API_URL=<api url>`
-
-## Health & smoke test
-
-```bash
-curl https://<api-url>/health      # {"db":"up", ...}
-```
+## Secrets
+`apps/api/.env` and `apps/web/.env` are git-ignored. The Gmail App Password lives only in your local `.env` and the host's env vars — never in the repo. Rotate it at <https://myaccount.google.com/apppasswords> if leaked.

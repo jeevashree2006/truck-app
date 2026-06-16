@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     mysql_user: str = "root"
     mysql_password: str = ""
     mysql_db: str = "fleet"
+    # Managed free MySQL (TiDB Serverless, Aiven, PlanetScale) require TLS — set DB_SSL=true.
+    db_ssl: bool = False
 
     # JWT
     jwt_secret: str = "change-me-in-production"
