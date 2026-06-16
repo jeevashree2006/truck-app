@@ -86,9 +86,21 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_url(self) -> str:
-        """Async SQLAlchemy DSN. Uses DATABASE_URL if set, else builds from MYSQL_* parts."""
+        """Async SQLAlchemy DSN. Uses DATABASE_URL if set, else builds from MYSQL_* parts.
+
+        Always forces the async `asyncmy` driver — managed providers (TiDB, Aiven,
+        PlanetScale) hand out plain `mysql://...` DSNs, which would otherwise make
+        SQLAlchemy try the sync `MySQLdb`/`pymysql` driver and crash.
+        """
         if self.database_url:
-            return self.database_url
+            url = self.database_url.strip()
+            # Drop URL query params (TiDB/Aiven append ?ssl_ca=…&ssl_mode=… which asyncmy
+            # rejects) — TLS is handled by DB_SSL + the engine's connect_args instead.
+            url = url.split("?", 1)[0]
+            for prefix in ("mysql+pymysql://", "mysql+mysqldb://", "mysql+mysqlconnector://", "mysql://"):
+                if url.startswith(prefix):
+                    return "mysql+asyncmy://" + url[len(prefix):]
+            return url
         from urllib.parse import quote_plus
 
         pwd = quote_plus(self.mysql_password)
