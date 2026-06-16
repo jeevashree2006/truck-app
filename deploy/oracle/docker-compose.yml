@@ -1,0 +1,37 @@
+# Runs the Fleet Owner API on an Oracle Cloud Always Free VM, behind Caddy which
+# auto-provisions a free HTTPS (Let's Encrypt) cert for your DuckDNS domain.
+# Your own Gmail SMTP sends the OTP emails (Oracle allows outbound port 587).
+#
+#   cd deploy/oracle && cp .env.example .env && nano .env   # fill in your values
+#   docker compose up -d --build
+#
+services:
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      PORT: "8000"
+    expose:
+      - "8000"          # internal only; Caddy is the public entry point
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - api
+    ports:
+      - "80:80"         # needed for the Let's Encrypt HTTP challenge + redirect
+      - "443:443"       # public HTTPS
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

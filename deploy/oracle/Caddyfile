@@ -1,0 +1,6 @@
+# Caddy reverse proxy with automatic HTTPS.
+# It fetches & renews a free Let's Encrypt certificate for $DOMAIN on its own,
+# then proxies all traffic to the API container on the internal port 8000.
+{$DOMAIN} {
+	reverse_proxy api:8000
+}
