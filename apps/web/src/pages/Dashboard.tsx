@@ -1,23 +1,28 @@
+import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CheckCircle2, FileWarning, Layers, Navigation, TrendingUp, Truck } from "lucide-react";
+import { CheckCircle2, FileWarning, Layers, Navigation, Phone, TrendingUp, Truck, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { useAuth } from "@/context/AuthContext";
 import { useI18n } from "@/context/I18nContext";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { SectionCard } from "@/components/ui/Card";
-import { DonutChart } from "@/components/ui/DonutChart";
-import { ProfitChart } from "@/components/charts/ProfitChart";
 import { ReminderCard } from "@/components/cards/ReminderCard";
 import { CardSkeleton, Skeleton } from "@/components/ui/Skeleton";
-import { compactMoney, money, spendMeta, vehicleStatusMeta } from "@/lib/format";
+import { compactMoney, initials, money, spendMeta, vehicleStatusMeta } from "@/lib/format";
+
+// Charts pull in recharts (~heavy) — load them lazily so the dashboard paints first.
+const ProfitChart = lazy(() => import("@/components/charts/ProfitChart").then((m) => ({ default: m.ProfitChart })));
+const DonutChart = lazy(() => import("@/components/ui/DonutChart").then((m) => ({ default: m.DonutChart })));
 
 export default function Dashboard() {
   const { user } = useAuth();
   const { t } = useI18n();
   const dash = useAsync(() => api.dashboard(6), []);
   const reminders = useAsync(() => api.reminders(), []);
+  const drivers = useAsync(() => api.listDrivers(), []);
+  const liveDrivers = (drivers.data ?? []).filter((d) => d.status === "active");
 
   const k = dash.data?.kpis;
   const donutData = (dash.data?.spend_breakdown ?? []).map((s) => ({
@@ -77,17 +82,54 @@ export default function Dashboard() {
           subtitle="Last 6 months"
           action={<span className="pill bg-status-valid/12 text-status-valid">{compactMoney(k?.profit_this_month)} this month</span>}
         >
-          {dash.loading ? <Skeleton className="h-[280px] w-full" /> : <ProfitChart data={dash.data!.monthly} type="area" />}
+          {dash.loading ? <Skeleton className="h-[280px] w-full" /> : (
+            <Suspense fallback={<Skeleton className="h-[280px] w-full" />}><ProfitChart data={dash.data!.monthly} type="area" /></Suspense>
+          )}
         </SectionCard>
 
         <SectionCard title="Spend Breakdown" subtitle="Completed trips">
           {dash.loading ? (
             <Skeleton className="h-[200px] w-full" />
           ) : (
-            <DonutChart data={donutData} centerValue={compactMoney(totalSpend)} centerLabel="Spend" />
+            <Suspense fallback={<Skeleton className="h-[200px] w-full" />}>
+              <DonutChart data={donutData} centerValue={compactMoney(totalSpend)} centerLabel="Spend" />
+            </Suspense>
           )}
         </SectionCard>
       </div>
+
+      {/* Live drivers */}
+      <SectionCard
+        title="Live drivers"
+        subtitle="On a trip right now"
+        action={<Link to="/drivers" className="text-sm font-semibold text-brand-600 hover:underline">View all</Link>}
+      >
+        {drivers.loading ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+        ) : liveDrivers.length === 0 ? (
+          <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-5 text-slate-500 dark:bg-ink-800">
+            <Users size={22} />
+            <p className="text-sm font-medium">No drivers on a trip. Assign a driver to a vehicle on the Drivers page.</p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {liveDrivers.map((d) => (
+              <div key={d.id} className="flex items-center gap-3 rounded-2xl border border-slate-100 p-3 dark:border-ink-600">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-sm font-bold text-white">{initials(d.name)}</div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{d.name}</p>
+                  <p className="truncate text-xs text-slate-400">{d.assigned_vehicle_registration ?? "On trip"}</p>
+                </div>
+                {d.primary_mobile && (
+                  <a href={`tel:${d.primary_mobile}`} className="flex h-9 w-9 items-center justify-center rounded-xl bg-status-valid/12 text-status-valid transition hover:bg-status-valid/20" aria-label={`Call ${d.name}`} title={`Call ${d.primary_mobile}`}>
+                    <Phone size={16} />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Reminders */}

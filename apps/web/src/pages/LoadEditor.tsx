@@ -22,7 +22,7 @@ import { Modal } from "@/components/ui/Modal";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { MoneyEntryList } from "@/components/forms/MoneyEntryList";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { computeLeg, computeTotals, routeSummary } from "@/lib/domain";
+import { computeLeg, computeTotals, routeSummary, tripMileage } from "@/lib/domain";
 import { compactMoney, fmtDate, money } from "@/lib/format";
 import type { Leg } from "@/types";
 
@@ -50,6 +50,7 @@ export default function LoadEditor() {
   const [tab, setTab] = useState<Tab>("load");
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
 
   useEffect(() => {
@@ -66,12 +67,17 @@ export default function LoadEditor() {
     setLegs((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  async function save() {
+  async function save(): Promise<boolean> {
     setSaving(true);
+    setSaveError(null);
     try {
       await api.updateLoad(loadId, { legs });
       setSavedAt(Date.now());
       load.reload();
+      return true;
+    } catch (err) {
+      setSaveError((err as Error).message || "Couldn't save the load");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -95,7 +101,11 @@ export default function LoadEditor() {
           <ArrowLeft size={16} /> Back to vehicle
         </Link>
         <div className="flex items-center gap-2">
-          {savedAt && <span className="text-xs font-medium text-status-valid">Saved ✓</span>}
+          {saveError ? (
+            <span className="max-w-[16rem] truncate text-xs font-medium text-status-expired" title={saveError}>⚠ {saveError}</span>
+          ) : savedAt ? (
+            <span className="text-xs font-medium text-status-valid">Saved ✓</span>
+          ) : null}
           <Button variant="ghost" onClick={save} disabled={saving} icon={saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}>
             Save
           </Button>
@@ -126,7 +136,8 @@ export default function LoadEditor() {
         <div className="flex items-center gap-3 rounded-2xl bg-status-valid/10 p-4 text-status-valid">
           <CheckCircle2 size={20} />
           <p className="text-sm font-medium">
-            This trip is closed{load.data.driver_balance != null ? ` · Driver returned ${money(load.data.driver_balance)}` : ""}.
+            This trip is closed{load.data.driver_balance != null ? ` · Driver returned ${money(load.data.driver_balance)}` : ""}
+            {load.data.mileage != null ? ` · Mileage ${load.data.mileage} km/l` : ""}.
           </p>
         </div>
       )}
@@ -304,7 +315,7 @@ export default function LoadEditor() {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={save} disabled={saving}>{saving ? <Loader2 size={16} className="animate-spin" /> : "Save"}</Button>
-            <Button onClick={async () => { await save(); setCloseOpen(true); }}>{t("load.closeTrip")}</Button>
+            <Button onClick={async () => { if (await save()) setCloseOpen(true); }}>{t("load.closeTrip")}</Button>
           </div>
         </div>
       )}
@@ -354,15 +365,25 @@ function CloseTripModal({
   expectedBalance: number;
   profit: number;
   onClose: () => void;
-  onConfirm: (payload: { accounts_image_url?: string | null; driver_balance?: number | null; end_date?: string }) => Promise<void>;
+  onConfirm: (payload: { accounts_image_url?: string | null; driver_balance?: number | null; end_date?: string; start_km?: number | null; end_km?: number | null; fuel_litres?: number | null }) => Promise<void>;
 }) {
   const [balance, setBalance] = useState("");
   const [image, setImage] = useState<string | null>(null);
+  const [startKm, setStartKm] = useState("");
+  const [endKm, setEndKm] = useState("");
+  const [fuelL, setFuelL] = useState("");
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (open) setBalance(String(Math.max(0, Math.round(expectedBalance))));
   }, [open, expectedBalance]);
+
+  const mileage = tripMileage(
+    startKm ? Number(startKm) : null,
+    endKm ? Number(endKm) : null,
+    fuelL ? Number(fuelL) : null,
+  );
+  const tripKm = startKm && endKm && Number(endKm) > Number(startKm) ? Number(endKm) - Number(startKm) : null;
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -395,6 +416,21 @@ function CloseTripModal({
           <TextInput type="number" value={balance} onChange={(e) => setBalance(e.target.value)} />
         </Field>
 
+        <div>
+          <label className="label">Odometer & fuel (for mileage)</label>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="Start km"><TextInput type="number" inputMode="decimal" placeholder="0" value={startKm} onChange={(e) => setStartKm(e.target.value)} /></Field>
+            <Field label="End km"><TextInput type="number" inputMode="decimal" placeholder="0" value={endKm} onChange={(e) => setEndKm(e.target.value)} /></Field>
+            <Field label="Fuel (litres)"><TextInput type="number" inputMode="decimal" placeholder="0" value={fuelL} onChange={(e) => setFuelL(e.target.value)} /></Field>
+          </div>
+          {(tripKm != null || mileage != null) && (
+            <div className="mt-2 flex items-center justify-between rounded-xl bg-brand-50 px-4 py-2.5 text-sm dark:bg-ink-800">
+              <span className="text-slate-500">{tripKm != null ? `Trip ${tripKm.toLocaleString()} km` : "Mileage"}</span>
+              <b className="text-base text-brand-700 dark:text-brand-300">{mileage != null ? `${mileage} km/l` : "—"}</b>
+            </div>
+          )}
+        </div>
+
         <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm dark:bg-ink-800">
           <div className="flex items-center justify-between">
             <span className="text-slate-500">Final trip profit</span>
@@ -409,7 +445,13 @@ function CloseTripModal({
           onClick={async () => {
             setConfirming(true);
             try {
-              await onConfirm({ accounts_image_url: image, driver_balance: balance ? Number(balance) : null });
+              await onConfirm({
+                accounts_image_url: image,
+                driver_balance: balance ? Number(balance) : null,
+                start_km: startKm ? Number(startKm) : null,
+                end_km: endKm ? Number(endKm) : null,
+                fuel_litres: fuelL ? Number(fuelL) : null,
+              });
             } finally {
               setConfirming(false);
             }

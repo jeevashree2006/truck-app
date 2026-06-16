@@ -114,6 +114,10 @@ export interface Load {
   legs: Leg[];
   accounts_image_url?: string | null;
   driver_balance?: number | null;
+  start_km?: number | null;
+  end_km?: number | null;
+  fuel_litres?: number | null;
+  mileage?: number | null; // km per litre, derived at close
   totals: LoadTotals;
   route?: string | null;
   created_at?: string | null;
@@ -130,6 +134,27 @@ export interface Repair {
   amount: number;
   vendor?: string | null;
   odometer_km?: number | null;
+}
+
+export interface DriverMobile {
+  number: string;
+  primary: boolean;
+}
+
+export interface Driver {
+  id: string;
+  owner_id: string;
+  name: string;
+  mobiles: DriverMobile[];
+  licence_number?: string | null;
+  licence_image_url?: string | null;
+  status: "active" | "inactive";
+  assigned_vehicle_id?: string | null;
+  assigned_vehicle_registration?: string | null;
+  primary_mobile?: string | null;
+  advance_amount: number;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface ReminderCard {

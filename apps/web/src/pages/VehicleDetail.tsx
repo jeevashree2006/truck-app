@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -49,13 +49,18 @@ export default function VehicleDetail() {
 
   const v = vehicle.data;
 
+  const creatingRef = useRef(false);
   async function startLoad() {
-    if (!v) return;
+    if (!v || creatingRef.current) return; // ref guard beats the disabled-attr re-render race on double-click
+    creatingRef.current = true;
     setCreatingLoad(true);
     try {
       const load = await api.createLoad({ vehicle_id: v.id });
       navigate(`/loads/${load.id}`);
+    } catch (err) {
+      alert(`Couldn't create the load: ${(err as Error).message}`);
     } finally {
+      creatingRef.current = false;
       setCreatingLoad(false);
     }
   }
@@ -114,7 +119,7 @@ export default function VehicleDetail() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setEditing(true)} className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-3.5 py-2.5 text-sm font-semibold backdrop-blur transition hover:bg-white/25"><Pencil size={15} /> Edit</button>
-            <button onClick={() => setDeleting(true)} className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-3.5 py-2.5 text-sm font-semibold backdrop-blur transition hover:bg-white/25"><Trash2 size={15} /></button>
+            <button onClick={() => setDeleting(true)} aria-label="Delete vehicle" title="Delete vehicle" className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-3.5 py-2.5 text-sm font-semibold backdrop-blur transition hover:bg-white/25"><Trash2 size={15} /></button>
           </div>
         </div>
 
@@ -176,7 +181,7 @@ export default function VehicleDetail() {
           {loads.loading ? (
             <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
           ) : (loads.data ?? []).length === 0 ? (
-            <EmptyState icon={<Layers size={24} />} title="No loads yet" description="Create a new load to record rent, diesel, advances and profit." action={<Button onClick={startLoad} icon={<Plus size={16} />}>{t("vehicle.newLoad")}</Button>} />
+            <EmptyState icon={<Layers size={24} />} title="No loads yet" description="Create a new load to record rent, diesel, advances and profit." action={<Button onClick={startLoad} disabled={creatingLoad} icon={creatingLoad ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}>{t("vehicle.newLoad")}</Button>} />
           ) : (
             <div className="space-y-5">
               {activeLoads.length > 0 && (

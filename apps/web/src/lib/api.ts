@@ -1,4 +1,4 @@
-import { computeTotals, enrichVehicle, routeSummary } from "@/lib/domain";
+import { computeTotals, enrichVehicle, routeSummary, tripMileage } from "@/lib/domain";
 import {
   mockDashboard,
   mockReminders,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/mocks";
 import type {
   DashboardResponse,
+  Driver,
   Leg,
   Load,
   Repair,
@@ -47,12 +48,52 @@ export class ApiError extends Error {
   }
 }
 
+/** Turn a FastAPI error body into a readable string. `detail` may be a string OR an
+ *  array of validation errors (422), which would otherwise render as "[object Object]". */
+function errorMessage(data: any): string | undefined {
+  const d = data?.detail;
+  if (d == null) return undefined;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    const msgs = d.map((e) => e?.msg || e?.message || (typeof e === "string" ? e : "")).filter(Boolean);
+    return msgs.length ? msgs.join("; ") : "Invalid input";
+  }
+  return typeof d === "object" ? JSON.stringify(d) : String(d);
+}
+
 const delay = (ms = 220) => new Promise((r) => setTimeout(r, ms));
 const blankLeg = (): Leg => ({
   loading_point: "", unloading_point: "", total_rent: 0, commission: 0, driver_salary: 0, fastag: 0, diesel: [], advance: [], freight_payments: [],
 });
 
-async function http<T>(path: string, init: RequestInit = {}): Promise<T> {
+// Silent token refresh: when the access token expires, swap it using the long-lived
+// refresh token instead of logging the user out. Deduped so concurrent 401s refresh once.
+let refreshInFlight: Promise<boolean> | null = null;
+function tryRefresh(): Promise<boolean> {
+  const r = tokenStore.refresh();
+  if (!r) return Promise.resolve(false);
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: r }),
+        });
+        if (!res.ok) return false;
+        tokenStore.set(await res.json());
+        return true;
+      } catch {
+        return false;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+  }
+  return refreshInFlight;
+}
+
+async function http<T>(path: string, init: RequestInit = {}, _retried = false): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((init.headers as Record<string, string>) ?? {}),
@@ -79,9 +120,13 @@ async function http<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (res.status === 204) return undefined as T;
+  // Access token expired → try one silent refresh, then replay the original request.
+  if (res.status === 401 && !_retried && path !== "/auth/refresh" && tokenStore.refresh()) {
+    if (await tryRefresh()) return http(path, init, true);
+  }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new ApiError(res.status, data?.detail ?? res.statusText);
+  if (!res.ok) throw new ApiError(res.status, errorMessage(data) ?? res.statusText);
   return data as T;
 }
 
@@ -95,6 +140,17 @@ function recomputeVehicleProfit(vehicleId: string) {
   const done = store.loads.filter((l) => l.vehicle_id === vehicleId && l.status === "completed");
   v.trips_count = done.length;
   v.total_profit = Math.round(done.reduce((a, l) => a + l.totals.profit, 0));
+}
+
+// In-memory drivers for demo (USE_MOCKS) mode.
+let mockDrivers: Driver[] = [];
+function driverPrimary(d: Driver): string | null {
+  const m = d.mobiles?.find((x) => x.primary) ?? d.mobiles?.[0];
+  return m?.number ?? null;
+}
+function enrichDriverMock(d: Driver): Driver {
+  const veh = mockStore.get().vehicles.find((v) => v.id === d.assigned_vehicle_id);
+  return { ...d, primary_mobile: driverPrimary(d), assigned_vehicle_registration: veh?.registration_number ?? null };
 }
 
 export const api = {
@@ -283,7 +339,7 @@ export const api = {
     return http(`/loads/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
   },
 
-  async closeLoad(id: string, payload: { accounts_image_url?: string | null; driver_balance?: number | null; end_date?: string | null }): Promise<Load> {
+  async closeLoad(id: string, payload: { accounts_image_url?: string | null; driver_balance?: number | null; end_date?: string | null; start_km?: number | null; end_km?: number | null; fuel_litres?: number | null }): Promise<Load> {
     if (USE_MOCKS) {
       await delay();
       const store = mockStore.get();
@@ -292,6 +348,10 @@ export const api = {
       l.status = "completed";
       l.accounts_image_url = payload.accounts_image_url ?? null;
       l.driver_balance = payload.driver_balance ?? null;
+      l.start_km = payload.start_km ?? null;
+      l.end_km = payload.end_km ?? null;
+      l.fuel_litres = payload.fuel_litres ?? null;
+      l.mileage = tripMileage(l.start_km, l.end_km, l.fuel_litres);
       l.end_date = payload.end_date ?? new Date().toISOString().slice(0, 10);
       l.closed_at = new Date().toISOString();
       Object.assign(l, enrichLoadMock(l));
@@ -388,7 +448,84 @@ export const api = {
     return http("/notifications");
   },
 
+  // -------- Drivers --------
+  async listDrivers(): Promise<Driver[]> {
+    if (USE_MOCKS) { await delay(120); return mockDrivers.map(enrichDriverMock); }
+    return http("/drivers");
+  },
+  async createDriver(payload: Partial<Driver>): Promise<Driver> {
+    if (USE_MOCKS) {
+      await delay();
+      const d: Driver = {
+        id: nid(), owner_id: "demo-owner", name: payload.name ?? "Driver",
+        mobiles: payload.mobiles ?? [], licence_number: payload.licence_number ?? null,
+        licence_image_url: payload.licence_image_url ?? null, status: "inactive",
+        assigned_vehicle_id: null, assigned_vehicle_registration: null, primary_mobile: null,
+        advance_amount: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      };
+      mockDrivers.unshift(d);
+      return enrichDriverMock(d);
+    }
+    return http("/drivers", { method: "POST", body: JSON.stringify(payload) });
+  },
+  async updateDriver(id: string, payload: Partial<Driver>): Promise<Driver> {
+    if (USE_MOCKS) {
+      await delay();
+      const d = mockDrivers.find((x) => x.id === id);
+      if (!d) throw new ApiError(404, "Driver not found");
+      Object.assign(d, payload, { updated_at: new Date().toISOString() });
+      return enrichDriverMock(d);
+    }
+    return http(`/drivers/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+  async assignDriverVehicle(id: string, vehicle_id: string | null): Promise<Driver> {
+    if (USE_MOCKS) {
+      await delay(120);
+      const d = mockDrivers.find((x) => x.id === id);
+      if (!d) throw new ApiError(404, "Driver not found");
+      if (vehicle_id) {
+        mockDrivers.forEach((o) => { if (o.assigned_vehicle_id === vehicle_id) { o.assigned_vehicle_id = null; o.status = "inactive"; } });
+        d.assigned_vehicle_id = vehicle_id; d.status = "active";
+      } else { d.assigned_vehicle_id = null; d.status = "inactive"; }
+      return enrichDriverMock(d);
+    }
+    return http(`/drivers/${id}/assign`, { method: "PATCH", body: JSON.stringify({ vehicle_id }) });
+  },
+  async setDriverAdvance(id: string, advance_amount: number): Promise<Driver> {
+    if (USE_MOCKS) {
+      await delay(120);
+      const d = mockDrivers.find((x) => x.id === id);
+      if (!d) throw new ApiError(404, "Driver not found");
+      d.advance_amount = advance_amount;
+      return enrichDriverMock(d);
+    }
+    return http(`/drivers/${id}/advance`, { method: "PATCH", body: JSON.stringify({ advance_amount }) });
+  },
+  async deleteDriver(id: string): Promise<void> {
+    if (USE_MOCKS) { await delay(); mockDrivers = mockDrivers.filter((x) => x.id !== id); return; }
+    await http(`/drivers/${id}`, { method: "DELETE" });
+  },
+
   reportUrl(kind: "profit.csv" | "loads.csv" | "fleet.pdf"): string {
     return `${API_URL}/api/v1/reports/${kind}`;
+  },
+
+  /** Download a report WITH the auth header (a plain <a href> can't send it → 401),
+   *  then save it via an object URL. */
+  async downloadReport(kind: "profit.csv" | "loads.csv" | "fleet.pdf"): Promise<void> {
+    const token = tokenStore.access();
+    const res = await fetch(this.reportUrl(kind), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new ApiError(res.status, `Export failed (${res.status})`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = kind; // e.g. "profit.csv"
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   },
 };

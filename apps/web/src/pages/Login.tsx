@@ -140,7 +140,9 @@ export default function Login() {
             <span className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">{t("app.name")}</span>
           </div>
 
-          <AnimatePresence mode="wait">
+          {/* No mode="wait": the next step must never depend on the previous step's exit
+              animation finishing (e.g. if rAF is throttled in a backgrounded tab). */}
+          <AnimatePresence>
             {step === "id" ? (
               <motion.form key={`id-${mode}`} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} onSubmit={sendCode}>
                 <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">

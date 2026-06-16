@@ -8,6 +8,22 @@ export default defineConfig({
             "@": path.resolve(__dirname, "./src"),
         },
     },
+    build: {
+        // Split big, stable third-party deps into their own cacheable chunks.
+        rollupOptions: {
+            output: {
+                manualChunks: function (id) {
+                    if (id.includes("node_modules")) {
+                        if (id.includes("recharts") || id.includes("/d3-") || id.includes("victory"))
+                            return "recharts";
+                        if (id.includes("framer-motion"))
+                            return "motion";
+                        return "vendor";
+                    }
+                },
+            },
+        },
+    },
     server: {
         port: 3000,
         host: true,

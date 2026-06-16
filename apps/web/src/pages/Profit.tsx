@@ -33,7 +33,7 @@ export default function Profit() {
         subtitle="Tap a vehicle to see every trip's profit"
         action={
           !USE_MOCKS ? (
-            <a href={api.reportUrl("profit.csv")} target="_blank" rel="noreferrer" className="btn-ghost"><Download size={16} /> CSV</a>
+            <button onClick={() => api.downloadReport("profit.csv").catch((e) => alert(`Export failed: ${e.message}`))} className="btn-ghost"><Download size={16} /> CSV</button>
           ) : null
         }
       >

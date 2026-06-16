@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bell, BellOff, FileWarning, Globe, LogOut, Moon, Sun, Monitor } from "lucide-react";
 import { useTheme, type ThemeMode } from "@/context/ThemeContext";
@@ -25,7 +25,11 @@ export function Topbar({
   const { lang, setLang } = useI18n();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [menu, setMenu] = useState<null | "lang" | "user" | "notif">(null);
+
+  // Close any open dropdown (notifications / language / user) when the route changes.
+  useEffect(() => setMenu(null), [pathname]);
 
   const themeIcons: Record<ThemeMode, typeof Sun> = { light: Sun, dark: Moon, system: Monitor };
   const cycle: Record<ThemeMode, ThemeMode> = { light: "dark", dark: "system", system: "light" };

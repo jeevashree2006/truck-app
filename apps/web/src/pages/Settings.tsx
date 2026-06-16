@@ -81,9 +81,9 @@ export default function Settings() {
       {/* Reports */}
       <SectionCard title="Reports & Export" subtitle={USE_MOCKS ? "Connect the backend to enable downloads" : "Download your fleet reports"}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <ReportLink href={api.reportUrl("fleet.pdf")} icon={<FileText size={18} />} label="Profit PDF" disabled={USE_MOCKS} />
-          <ReportLink href={api.reportUrl("profit.csv")} icon={<Download size={18} />} label="Profit CSV" disabled={USE_MOCKS} />
-          <ReportLink href={api.reportUrl("loads.csv")} icon={<Download size={18} />} label="Loads CSV" disabled={USE_MOCKS} />
+          <ReportLink kind="fleet.pdf" icon={<FileText size={18} />} label="Profit PDF" disabled={USE_MOCKS} />
+          <ReportLink kind="profit.csv" icon={<Download size={18} />} label="Profit CSV" disabled={USE_MOCKS} />
+          <ReportLink kind="loads.csv" icon={<Download size={18} />} label="Loads CSV" disabled={USE_MOCKS} />
         </div>
       </SectionCard>
 
@@ -96,11 +96,11 @@ export default function Settings() {
   );
 }
 
-function ReportLink({ href, icon, label, disabled }: { href: string; icon: React.ReactNode; label: string; disabled?: boolean }) {
+function ReportLink({ kind, icon, label, disabled }: { kind: "profit.csv" | "loads.csv" | "fleet.pdf"; icon: React.ReactNode; label: string; disabled?: boolean }) {
   if (disabled) {
     return <span className="btn-ghost cursor-not-allowed opacity-50">{icon} {label}</span>;
   }
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="btn-ghost">{icon} {label}</a>
+    <button onClick={() => api.downloadReport(kind).catch((e) => alert(`Export failed: ${e.message}`))} className="btn-ghost">{icon} {label}</button>
   );
 }

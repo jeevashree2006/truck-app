@@ -12,6 +12,7 @@ const TITLES: Array<{ match: (p: string) => boolean; key: DictKey }> = [
   { match: (p) => p === "/", key: "nav.dashboard" },
   { match: (p) => p.startsWith("/vehicles"), key: "nav.vehicles" },
   { match: (p) => p.startsWith("/loads"), key: "nav.vehicles" },
+  { match: (p) => p.startsWith("/drivers"), key: "nav.drivers" },
   { match: (p) => p.startsWith("/profit"), key: "nav.profit" },
   { match: (p) => p.startsWith("/settings"), key: "nav.settings" },
 ];

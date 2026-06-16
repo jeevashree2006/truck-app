@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Layers, MapPin } from "lucide-react";
+import { ArrowUpRight, Gauge, Layers, MapPin } from "lucide-react";
 import type { Load } from "@/types";
 import { compactMoney, fmtDate, money, tripStatusMeta } from "@/lib/format";
 
@@ -30,6 +30,11 @@ export function LoadCard({ load, index = 0 }: { load: Load; index?: number }) {
             {load.totals.leg_count > 1 && <span>{load.totals.leg_count} legs</span>}
             <span>Rent {compactMoney(load.totals.total_rent)}</span>
             <span>Spend {compactMoney(load.totals.spend)}</span>
+            {load.mileage != null && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-1.5 py-0.5 font-semibold text-brand-700 dark:bg-ink-600 dark:text-brand-300">
+                <Gauge size={12} /> {load.mileage} km/l
+              </span>
+            )}
           </div>
         </div>
 

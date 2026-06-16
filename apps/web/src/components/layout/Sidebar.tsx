@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { NavLink } from "react-router-dom";
-import { ChevronLeft, LayoutDashboard, Settings, TrendingUp, Truck } from "lucide-react";
+import { ChevronLeft, LayoutDashboard, Settings, TrendingUp, Truck, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/context/I18nContext";
 import type { DictKey } from "@/i18n/dictionaries";
@@ -8,6 +8,7 @@ import type { DictKey } from "@/i18n/dictionaries";
 const items: Array<{ to: string; icon: typeof Truck; key: DictKey }> = [
   { to: "/", icon: LayoutDashboard, key: "nav.dashboard" },
   { to: "/vehicles", icon: Truck, key: "nav.vehicles" },
+  { to: "/drivers", icon: Users, key: "nav.drivers" },
   { to: "/profit", icon: TrendingUp, key: "nav.profit" },
   { to: "/settings", icon: Settings, key: "nav.settings" },
 ];

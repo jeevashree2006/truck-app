@@ -108,7 +108,9 @@ export function computeTotals(legs: Leg[]): LoadTotals {
     expected_driver_balance: r2(Math.max(0, total_advance - (total_diesel + total_fastag))),
     freight_received: r2(freight_received),
     freight_pending: r2(freight_pending),
-    freight_fully_paid: total_rent > 0 && freight_received >= total_rent - 0.01,
+    // Per-leg freight: fully paid only when no leg is still owed (overpaying one leg
+    // must not cancel another leg's shortfall).
+    freight_fully_paid: total_rent > 0 && freight_pending <= 0.01,
   };
 }
 
@@ -123,11 +125,23 @@ export function routeSummary(legs: Leg[]): string {
   return points.join(" → ");
 }
 
+/** Trip mileage in km/litre = (end_km - start_km) / fuel_litres, when all are valid. */
+export function tripMileage(
+  startKm?: number | null,
+  endKm?: number | null,
+  fuelLitres?: number | null,
+): number | null {
+  if (startKm == null || endKm == null || fuelLitres == null) return null;
+  if (fuelLitres <= 0 || endKm <= startKm) return null;
+  return r2((endKm - startKm) / fuelLitres);
+}
+
 export function enrichLoad(load: Load): Load {
   return {
     ...load,
     legs: load.legs.map(computeLeg),
     totals: computeTotals(load.legs),
     route: routeSummary(load.legs),
+    mileage: tripMileage(load.start_km, load.end_km, load.fuel_litres),
   };
 }
