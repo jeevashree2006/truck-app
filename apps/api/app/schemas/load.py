@@ -18,7 +18,7 @@ class LegBase(BaseModel):
     loading_point: str = Field(default="", max_length=120)
     unloading_point: str = Field(default="", max_length=120)
     total_rent: float = Field(default=0, ge=0)
-    commission: float = Field(default=0, ge=0)        # transport commission
+    commission: list[MoneyEntry] = Field(default_factory=list)  # transport commission(s)
     driver_salary: float = Field(default=0, ge=0)
     fastag: list[MoneyEntry] = Field(default_factory=list)   # multiple toll/FASTag entries
     diesel: list[MoneyEntry] = Field(default_factory=list)   # multiple fills
@@ -33,6 +33,7 @@ class LegOut(LegBase):
     diesel_total: float = 0.0
     advance_total: float = 0.0
     fastag_total: float = 0.0
+    commission_total: float = 0.0
     spend: float = 0.0      # diesel + commission + driver_salary + fastag + advance
     profit: float = 0.0     # total_rent - spend
     freight_received: float = 0.0          # payments received for this leg

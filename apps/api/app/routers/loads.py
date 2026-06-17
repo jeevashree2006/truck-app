@@ -54,7 +54,7 @@ async def create_load(payload: LoadCreate, current: CurrentUser, db: DbDep):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
 
     legs = payload.legs or [
-        {"loading_point": "", "unloading_point": "", "total_rent": 0, "commission": 0,
+        {"loading_point": "", "unloading_point": "", "total_rent": 0, "commission": [],
          "driver_salary": 0, "fastag": [], "diesel": [], "advance": [], "freight_payments": []}
     ]
     doc = to_mongo(

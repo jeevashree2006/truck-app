@@ -40,7 +40,7 @@ function leg(
   advance: MoneyEntry[],
   freight_payments: MoneyEntry[] = [],
 ): Leg {
-  return { loading_point: from, unloading_point: to, total_rent: rent, commission, driver_salary: salary, fastag: fastag ? [{ amount: fastag }] : [], diesel, advance, freight_payments };
+  return { loading_point: from, unloading_point: to, total_rent: rent, commission: commission ? [{ amount: commission }] : [], driver_salary: salary, fastag: fastag ? [{ amount: fastag }] : [], diesel, advance, freight_payments };
 }
 
 interface Store {

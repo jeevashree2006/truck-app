@@ -70,7 +70,7 @@ export interface Leg {
   loading_point: string;
   unloading_point: string;
   total_rent: number;
-  commission: number;
+  commission: MoneyEntry[];
   driver_salary: number;
   fastag: MoneyEntry[];
   diesel: MoneyEntry[];
@@ -80,6 +80,7 @@ export interface Leg {
   diesel_total?: number;
   advance_total?: number;
   fastag_total?: number;
+  commission_total?: number;
   spend?: number;
   profit?: number;
   freight_received?: number;

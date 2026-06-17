@@ -31,21 +31,24 @@ def compute_leg(leg: dict) -> dict:
     advance_total = _sum_entries(leg.get("advance"))
     fastag_entries = _as_entries(leg.get("fastag"))
     fastag_total = _sum_entries(fastag_entries)
-    commission = float(leg.get("commission") or 0)
+    commission_entries = _as_entries(leg.get("commission"))
+    commission_total = _sum_entries(commission_entries)
     salary = float(leg.get("driver_salary") or 0)
     rent = float(leg.get("total_rent") or 0)
     # Spend = every cost on the leg EXCEPT the rent (diesel + commission + salary + fastag + advance).
-    spend = diesel_total + commission + salary + fastag_total + advance_total
+    spend = diesel_total + commission_total + salary + fastag_total + advance_total
     freight_received = _sum_entries(leg.get("freight_payments"))
     freight_pending = max(0.0, rent - freight_received)
     out = dict(leg)
     out["fastag"] = fastag_entries  # normalize legacy scalar -> list of entries
+    out["commission"] = commission_entries
     out.setdefault("freight_payments", [])
     out.update(
         {
             "diesel_total": round(diesel_total, 2),
             "advance_total": round(advance_total, 2),
             "fastag_total": round(fastag_total, 2),
+            "commission_total": round(commission_total, 2),
             "spend": round(spend, 2),
             "profit": round(rent - spend, 2),
             "freight_received": round(freight_received, 2),
@@ -61,7 +64,7 @@ def compute_totals(legs: list[dict], driver_balance: float | None = None) -> dic
     computed = [compute_leg(l) for l in legs]
     total_rent = sum(float(l.get("total_rent") or 0) for l in computed)
     total_diesel = sum(l["diesel_total"] for l in computed)
-    total_commission = sum(float(l.get("commission") or 0) for l in computed)
+    total_commission = sum(l["commission_total"] for l in computed)
     total_salary = sum(float(l.get("driver_salary") or 0) for l in computed)
     total_fastag = sum(l["fastag_total"] for l in computed)
     total_advance = sum(l["advance_total"] for l in computed)

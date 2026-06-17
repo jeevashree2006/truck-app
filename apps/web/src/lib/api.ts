@@ -63,7 +63,7 @@ function errorMessage(data: any): string | undefined {
 
 const delay = (ms = 220) => new Promise((r) => setTimeout(r, ms));
 const blankLeg = (): Leg => ({
-  loading_point: "", unloading_point: "", total_rent: 0, commission: 0, driver_salary: 0, fastag: [], diesel: [], advance: [], freight_payments: [],
+  loading_point: "", unloading_point: "", total_rent: 0, commission: [], driver_salary: 0, fastag: [], diesel: [], advance: [], freight_payments: [],
 });
 
 // Silent token refresh: when the access token expires, swap it using the long-lived
