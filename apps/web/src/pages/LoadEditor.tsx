@@ -34,7 +34,7 @@ const blankLeg = (): Leg => ({
   total_rent: 0,
   commission: 0,
   driver_salary: 0,
-  fastag: 0,
+  fastag: [],
   diesel: [],
   advance: [],
   freight_payments: [],
@@ -186,16 +186,16 @@ export default function LoadEditor() {
                   <Field label="Unloading point"><TextInput value={leg.unloading_point} onChange={(e) => patchLeg(i, { unloading_point: e.target.value })} placeholder="Mumbai" /></Field>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <Field label={t("load.rent")}><TextInput type="number" value={leg.total_rent || ""} onChange={(e) => patchLeg(i, { total_rent: Number(e.target.value) })} placeholder="95000" /></Field>
                   <Field label={t("load.commission")}><TextInput type="number" value={leg.commission || ""} onChange={(e) => patchLeg(i, { commission: Number(e.target.value) })} placeholder="4000" /></Field>
                   <Field label={t("load.salary")}><TextInput type="number" value={leg.driver_salary || ""} onChange={(e) => patchLeg(i, { driver_salary: Number(e.target.value) })} placeholder="8000" /></Field>
-                  <Field label={t("load.fastag")}><TextInput type="number" value={leg.fastag || ""} onChange={(e) => patchLeg(i, { fastag: Number(e.target.value) })} placeholder="2200" /></Field>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <MoneyEntryList label="Diesel" accent="#8b5cf6" entries={leg.diesel} onChange={(d) => patchLeg(i, { diesel: d })} />
                   <MoneyEntryList label="Advance" accent="#06b6d4" entries={leg.advance} onChange={(a) => patchLeg(i, { advance: a })} />
+                  <MoneyEntryList label="FASTag / Toll" accent="#f59e0b" entries={leg.fastag} onChange={(f) => patchLeg(i, { fastag: f })} />
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl bg-slate-50 px-4 py-3 text-sm dark:bg-ink-800">

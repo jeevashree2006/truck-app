@@ -63,7 +63,7 @@ function errorMessage(data: any): string | undefined {
 
 const delay = (ms = 220) => new Promise((r) => setTimeout(r, ms));
 const blankLeg = (): Leg => ({
-  loading_point: "", unloading_point: "", total_rent: 0, commission: 0, driver_salary: 0, fastag: 0, diesel: [], advance: [], freight_payments: [],
+  loading_point: "", unloading_point: "", total_rent: 0, commission: 0, driver_salary: 0, fastag: [], diesel: [], advance: [], freight_payments: [],
 });
 
 // Silent token refresh: when the access token expires, swap it using the long-lived
@@ -484,7 +484,9 @@ export const api = {
       const d = mockDrivers.find((x) => x.id === id);
       if (!d) throw new ApiError(404, "Driver not found");
       if (vehicle_id) {
-        mockDrivers.forEach((o) => { if (o.assigned_vehicle_id === vehicle_id) { o.assigned_vehicle_id = null; o.status = "inactive"; } });
+        // Allow up to TWO live drivers per vehicle.
+        const others = mockDrivers.filter((o) => o.id !== id && o.assigned_vehicle_id === vehicle_id);
+        if (others.length >= 2) throw new ApiError(409, "This vehicle already has 2 drivers assigned. Free one before adding another.");
         d.assigned_vehicle_id = vehicle_id; d.status = "active";
       } else { d.assigned_vehicle_id = null; d.status = "inactive"; }
       return enrichDriverMock(d);

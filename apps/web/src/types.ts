@@ -72,13 +72,14 @@ export interface Leg {
   total_rent: number;
   commission: number;
   driver_salary: number;
-  fastag: number;
+  fastag: MoneyEntry[];
   diesel: MoneyEntry[];
   advance: MoneyEntry[];
   freight_payments: MoneyEntry[]; // received from this leg's transporter
   // computed:
   diesel_total?: number;
   advance_total?: number;
+  fastag_total?: number;
   spend?: number;
   profit?: number;
   freight_received?: number;

@@ -55,7 +55,7 @@ async def create_load(payload: LoadCreate, current: CurrentUser, db: DbDep):
 
     legs = payload.legs or [
         {"loading_point": "", "unloading_point": "", "total_rent": 0, "commission": 0,
-         "driver_salary": 0, "fastag": 0, "diesel": [], "advance": [], "freight_payments": []}
+         "driver_salary": 0, "fastag": [], "diesel": [], "advance": [], "freight_payments": []}
     ]
     doc = to_mongo(
         {

@@ -68,14 +68,16 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 export function computeLeg(leg: Leg): Leg {
   const diesel_total = sumEntries(leg.diesel);
   const advance_total = sumEntries(leg.advance);
+  const fastag_total = sumEntries(leg.fastag);
   // Spend = every cost except the rent (diesel + commission + salary + fastag + advance).
-  const spend = diesel_total + (leg.commission || 0) + (leg.driver_salary || 0) + (leg.fastag || 0) + advance_total;
+  const spend = diesel_total + (leg.commission || 0) + (leg.driver_salary || 0) + fastag_total + advance_total;
   const rent = leg.total_rent || 0;
   const freight_received = sumEntries(leg.freight_payments);
   return {
     ...leg,
     diesel_total: r2(diesel_total),
     advance_total: r2(advance_total),
+    fastag_total: r2(fastag_total),
     spend: r2(spend),
     profit: r2(rent - spend),
     freight_received: r2(freight_received),
@@ -90,7 +92,7 @@ export function computeTotals(legs: Leg[]): LoadTotals {
   const total_diesel = computed.reduce((a, l) => a + (l.diesel_total || 0), 0);
   const total_commission = computed.reduce((a, l) => a + (l.commission || 0), 0);
   const total_salary = computed.reduce((a, l) => a + (l.driver_salary || 0), 0);
-  const total_fastag = computed.reduce((a, l) => a + (l.fastag || 0), 0);
+  const total_fastag = computed.reduce((a, l) => a + (l.fastag_total || 0), 0);
   const total_advance = computed.reduce((a, l) => a + (l.advance_total || 0), 0);
   const spend = total_diesel + total_commission + total_salary + total_fastag + total_advance;
   const freight_received = computed.reduce((a, l) => a + (l.freight_received || 0), 0);

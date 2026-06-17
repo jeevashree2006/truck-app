@@ -14,24 +14,38 @@ def _sum_entries(entries) -> float:
     return float(sum(float(e.get("amount") or 0) for e in (entries or [])))
 
 
+def _as_entries(value) -> list[dict]:
+    """Normalize a money field that may be a legacy scalar OR a list of {amount, note}.
+
+    FASTag used to be a single number; it's now multiple entries like diesel/advance.
+    Old loads stored in the DB keep a scalar, so coerce it to a one-item list on read.
+    """
+    if isinstance(value, (int, float)):
+        return [{"amount": float(value)}] if value else []
+    return list(value or [])
+
+
 def compute_leg(leg: dict) -> dict:
     """Return the leg with per-leg computed totals (diesel_total, spend, profit, freight...)."""
     diesel_total = _sum_entries(leg.get("diesel"))
     advance_total = _sum_entries(leg.get("advance"))
+    fastag_entries = _as_entries(leg.get("fastag"))
+    fastag_total = _sum_entries(fastag_entries)
     commission = float(leg.get("commission") or 0)
     salary = float(leg.get("driver_salary") or 0)
-    fastag = float(leg.get("fastag") or 0)
     rent = float(leg.get("total_rent") or 0)
     # Spend = every cost on the leg EXCEPT the rent (diesel + commission + salary + fastag + advance).
-    spend = diesel_total + commission + salary + fastag + advance_total
+    spend = diesel_total + commission + salary + fastag_total + advance_total
     freight_received = _sum_entries(leg.get("freight_payments"))
     freight_pending = max(0.0, rent - freight_received)
     out = dict(leg)
+    out["fastag"] = fastag_entries  # normalize legacy scalar -> list of entries
     out.setdefault("freight_payments", [])
     out.update(
         {
             "diesel_total": round(diesel_total, 2),
             "advance_total": round(advance_total, 2),
+            "fastag_total": round(fastag_total, 2),
             "spend": round(spend, 2),
             "profit": round(rent - spend, 2),
             "freight_received": round(freight_received, 2),
@@ -49,7 +63,7 @@ def compute_totals(legs: list[dict], driver_balance: float | None = None) -> dic
     total_diesel = sum(l["diesel_total"] for l in computed)
     total_commission = sum(float(l.get("commission") or 0) for l in computed)
     total_salary = sum(float(l.get("driver_salary") or 0) for l in computed)
-    total_fastag = sum(float(l.get("fastag") or 0) for l in computed)
+    total_fastag = sum(l["fastag_total"] for l in computed)
     total_advance = sum(l["advance_total"] for l in computed)
     # Spend includes the driver advance now (every cost except the rent).
     spend = total_diesel + total_commission + total_salary + total_fastag + total_advance

@@ -78,15 +78,19 @@ async def assign_vehicle(driver_id: str, payload: AssignVehicle, current: Curren
     if payload.vehicle_id:
         if await owned_vehicle_or_none(db, current["id"], payload.vehicle_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
-        # One live driver per vehicle: free any other driver currently on this vehicle.
-        for other in await db.drivers.find(
-            {"owner_id": current["id"], "assigned_vehicle_id": payload.vehicle_id}
-        ).to_list(length=2000):
-            if other["id"] != driver_id:
-                await db.drivers.update_one(
-                    {"id": other["id"]},
-                    {"$set": {"assigned_vehicle_id": None, "status": "inactive", "updated_at": _now()}},
-                )
+        # Allow up to TWO live drivers per vehicle (e.g. a long-haul relay pair).
+        others = [
+            o
+            for o in await db.drivers.find(
+                {"owner_id": current["id"], "assigned_vehicle_id": payload.vehicle_id}
+            ).to_list(length=2000)
+            if o["id"] != driver_id
+        ]
+        if len(others) >= 2:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This vehicle already has 2 drivers assigned. Free one before adding another.",
+            )
         await db.drivers.update_one(
             {"id": driver_id},
             {"$set": {"assigned_vehicle_id": payload.vehicle_id, "status": "active", "updated_at": _now()}},
